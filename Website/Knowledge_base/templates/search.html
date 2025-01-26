@@ -1,3 +1,4 @@
+<!-- Website\Knowledge_base\templates\search.html -->
 {% extends 'base.html' %}
 
 {% block content %}
@@ -14,11 +15,18 @@
     {% for result in results %}
         <div class="card my-3">
             <div class="card-body">
-                <h5 class="card-title">{{ result[0] }}</h5>
-                <h6 class="card-subtitle mb-2 text-muted">{{ result[2].strftime('%Y-%m-%d') }}</h6>
-                <p class="card-text">{{ result[3] }}</p>
-                <a href="{{ result[1] }}" download>Download</a>
-                <a href="{{ url_for('view_document') }}?file_path={{ result[1] }}">View</a>
+                <!-- Display Document ID and Title -->
+                <h5 class="card-title">Document #{{ result[0] }}: {{ result[1] }}</h5>
+                
+                <!-- Display Upload Date -->
+                <h6 class="card-subtitle mb-2 text-muted">Uploaded: {{ result[3].strftime('%Y-%m-%d') }}</h6>
+                
+                <!-- Display Summary -->
+                <p class="card-text">{{ result[4] }}</p>
+                
+                <!-- File Actions -->
+                <a href="{{ result[2] }}" download class="btn btn-link">Download</a>
+                <a href="{{ url_for('view_document') }}?file_path={{ result[2] }}" class="btn btn-link">View</a>
             </div>
         </div>
     {% endfor %}

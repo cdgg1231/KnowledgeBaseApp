@@ -1,3 +1,5 @@
+<!-- Website\Knowledge_base\templates\base.html  -->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,10 +13,19 @@
         <h1 class="text-center">Knowledge Base</h1>
         <nav class="nav justify-content-center">
             <a class="nav-link" href="{{ url_for('home') }}">Home</a>
-            <a class="nav-link" href="{{ url_for('upload') }}">Upload Document</a>
-            <a class="nav-link" href="{{ url_for('search') }}">Search Documents</a>
+            {% if session.get('username') %}
+                {% if session.get('access_level') == "Admin" %} <!-- Admin Access -->
+                <a class="nav-link" href="{{ url_for('create_user') }}">Add Users</a>
+                {% endif %}
+                <a class="nav-link" href="{{ url_for('upload') }}">Upload Document</a>
+                <a class="nav-link" href="{{ url_for('search') }}">Search Documents</a>
+                <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+            {% else %}
+                <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+            {% endif %}
         </nav>
         <hr>
+        <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
                 {% for category, message in messages %}
@@ -22,6 +33,7 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
+        <!-- Content -->
         {% block content %}{% endblock %}
     </div>
 </body>
