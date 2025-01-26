@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2>{{ file_name }}</h2>
+<div class="border p-3 bg-light">
+    <pre>{{ content }}</pre>
+</div>
+<a href="{{ url_for('search') }}" class="btn btn-secondary mt-3">Back to Search</a>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2>Knowledge Base - Home</h2>
+<p>Welcome to the Knowledge Base. Use the navigation to upload or search documents.</p>
+
+<h3>Available Documents</h3>
+{% if documents %}
+    <ul class="list-group">
+        {% for doc in documents %}
+            <li class="list-group-item">
+                <strong>{{ doc[0] }}</strong> <!-- Title -->
+                <br>
+                <small>Uploaded: {{ doc[2].strftime('%Y-%m-%d') }}</small>
+                <br>
+                {{ doc[3] }} <!-- Summary -->
+                <br>
+                <a href="{{ doc[1] }}" download class="btn btn-link">Download</a>
+                <a href="{{ url_for('view_document') }}?file_path={{ doc[1] }}" class="btn btn-link">View</a>
+            </li>
+        {% endfor %}
+    </ul>
+{% else %}
+    <p>No documents available.</p>
+{% endif %}
+{% endblock %}
