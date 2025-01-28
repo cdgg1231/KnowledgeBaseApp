@@ -5,42 +5,32 @@ import pyodbc
 from werkzeug.security import generate_password_hash, check_password_hash
 import hashlib
 
-import os
-import pyodbc
 from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Fetch database credentials from environment variables
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # Flask App
 app = Flask(__name__)
-app.secret_key = "supersecretkey"
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "supersecretkey")  # Load secret key from env
 
 # Configuration
 UPLOAD_FOLDER = './static/documents'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-import os
-import pyodbc
-
-# Fetch credentials from environment variables
-db_database = os.getenv('DB_DATABASE')
-db_user = os.getenv('DB_USER')
-db_password = os.getenv('DB_PASSWORD')
-db_engine = os.getenv('DB_ENGINE')
-
+# Database Connection Function
 def connect_to_db():
     try:
-        conn = pyodbc.connect(
-            f'DRIVER={{ODBC Driver 17 for SQL Server}};'
-            f'SERVER={db_engine};'
-            f'DATABASE={db_database};'
-            f'UID={db_user};'
-            f'PWD={db_password}'
-        )
+        conn = pyodbc.connect(DATABASE_URL)
         return conn
     except Exception as e:
         print(f"Error connecting to database: {e}")
         return None
 
-
+# ------------------------------------ ROUTES ----------
 # Routes
 import hashlib
 @app.route('/login', methods=['GET', 'POST'])
