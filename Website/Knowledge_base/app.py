@@ -5,6 +5,10 @@ import pyodbc
 from werkzeug.security import generate_password_hash, check_password_hash
 import hashlib
 
+import os
+import pyodbc
+from dotenv import load_dotenv
+
 # Flask App
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
@@ -13,13 +17,15 @@ app.secret_key = "supersecretkey"
 UPLOAD_FOLDER = './static/documents'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# Database Configuration
-db_database = 'KnowledgeBaseDB'
-db_user = 'dbuser'
-db_password = 'admin'
-db_engine = '.\\SQLEXPRESS'
+import os
+import pyodbc
 
-# Database Connection
+# Fetch credentials from environment variables
+db_database = os.getenv('DB_DATABASE')
+db_user = os.getenv('DB_USER')
+db_password = os.getenv('DB_PASSWORD')
+db_engine = os.getenv('DB_ENGINE')
+
 def connect_to_db():
     try:
         conn = pyodbc.connect(
