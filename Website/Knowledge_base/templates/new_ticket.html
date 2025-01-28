@@ -1,0 +1,117 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<h2>Tickets</h2>
+
+<div class="mb-4">
+    <!-- Buttons to toggle sections -->
+    <button id="show-create" class="btn btn-primary">Create New Ticket</button>
+    <button id="show-search" class="btn btn-secondary">Search Old Tickets</button>
+</div>
+
+<!-- Create New Ticket Section -->
+<div id="create-ticket-section" style="display: none;">
+    <h2>Create New Ticket</h2>
+    <form method="post" enctype="multipart/form-data">
+        <div class="mb-3">
+            <label for="name" class="form-label">Name</label>
+            <input type="text" name="name" id="name" class="form-control" required>
+        </div>
+        <div class="mb-3">
+            <label for="phone" class="form-label">Phone</label>
+            <input type="text" name="phone" id="phone" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label for="email" class="form-label">Email</label>
+            <input type="email" name="email" id="email" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label for="job_site" class="form-label">Job Site</label>
+            <input type="text" name="job_site" id="job_site" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label for="issue_title" class="form-label">Issue Title</label>
+            <input type="text" name="issue_title" id="issue_title" class="form-control" maxlength="40" required>
+        </div>
+        <div class="mb-3">
+            <label for="description" class="form-label">Description</label>
+            <textarea name="description" id="description" class="form-control" rows="5"></textarea>
+        </div>
+        <div class="mb-3">
+            <label for="steps_taken" class="form-label">Steps Taken</label>
+            <textarea name="steps_taken" id="steps_taken" class="form-control" rows="3"></textarea>
+        </div>
+        <div class="mb-3">
+            <label for="document_id" class="form-label">Reference Document</label>
+            <select name="document_id" id="document_id" class="form-select">
+                {% for doc in documents %}
+                <option value="{{ doc[0] }}">{{ doc[1] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="assigned_to" class="form-label">Assign To</label>
+            <select name="assigned_to" id="assigned_to" class="form-select">
+                {% for user in users %}
+                <option value="{{ user[0] }}">{{ user[1] }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="file" class="form-label">Attach File</label>
+            <input type="file" name="file" id="file" class="form-control">
+        </div>
+        <button type="submit" class="btn btn-primary">Create Ticket</button>
+    </form>
+</div>
+
+<!-- Search Old Tickets Section -->
+<div id="search-tickets-section" style="display: none;">
+    <h3>Search Old Tickets</h3>
+    <form method="post">
+        <div class="mb-3">
+            <label for="search_query" class="form-label">Search by Issue Title</label>
+            <input type="text" name="search_query" id="search_query" class="form-control">
+        </div>
+        <button type="submit" class="btn btn-secondary">Search</button>
+    </form>
+
+    {% if search_results %}
+        <h4>Search Results</h4>
+        <ul class="list-group">
+            {% for result in search_results %}
+                <li class="list-group-item">
+                    <strong>Ticket #{{ result[0] }}</strong>
+                    <br>
+                    <strong>{{ result[1] }}</strong>
+                    <br>
+                    <small>Created: {{ result[2].strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                    <br>
+                    <small>Status: {{ result[3] }}</small>
+                    {% if result[3] == 'Closed' and result[4] %}
+                        <br>
+                        <small>Closed At: {{ result[4].strftime('%Y-%m-%d %H:%M:%S') }}</small>
+                    {% endif %}
+                    <br>
+                    <a href="{{ url_for('edit_ticket', ticket_id=result[0]) }}" class="btn btn-link">Edit Ticket</a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+</div>
+
+
+
+<script>
+    // JavaScript to toggle visibility of sections
+    document.getElementById('show-create').addEventListener('click', function () {
+        document.getElementById('create-ticket-section').style.display = 'block';
+        document.getElementById('search-tickets-section').style.display = 'none';
+    });
+
+    document.getElementById('show-search').addEventListener('click', function () {
+        document.getElementById('create-ticket-section').style.display = 'none';
+        document.getElementById('search-tickets-section').style.display = 'block';
+    });
+</script>
+{% endblock %}
