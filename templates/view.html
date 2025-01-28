@@ -1,0 +1,9 @@
+{% if file_name.endswith('.html') or file_name.endswith('.htm') %}
+    <div class="border p-3 bg-light">
+        {{ content | safe }}
+    </div>
+{% else %}
+    <div class="border p-3 bg-light">
+        <pre>{{ content }}</pre>
+    </div>
+{% endif %}
