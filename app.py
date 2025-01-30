@@ -1,70 +1,73 @@
 import os
 import datetime
 from flask import Flask, request, render_template, redirect, url_for, flash, send_file, session
-import psycopg2  # Use psycopg2 instead of pyodbc
+import pyodbc
 from werkzeug.security import generate_password_hash, check_password_hash
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
-# Fetch PostgreSQL database credentials
-DATABASE_URL = os.getenv("DATABASE_URL")
+import hashlib
 
 # Flask App
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "supersecretkey")  # Load secret key from env
+app.secret_key = "supersecretkey"
 
 # Configuration
 UPLOAD_FOLDER = './static/documents'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# ✅ Corrected: PostgreSQL Database Connection Function
+# Database Configuration
+db_database = 'KnowledgeBaseDB'
+db_user = 'dbuser'
+db_password = 'admin'
+db_engine = '.\\SQLEXPRESS'
+
+# Database Connection
 def connect_to_db():
     try:
-        conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+        conn = pyodbc.connect(
+            f'DRIVER={{ODBC Driver 17 for SQL Server}};'
+            f'SERVER={db_engine};'
+            f'DATABASE={db_database};'
+            f'UID={db_user};'
+            f'PWD={db_password}'
+        )
         return conn
     except Exception as e:
         print(f"Error connecting to database: {e}")
         return None
 
-# ------------------------------------ ROUTES ------------------------------------
 
+# Routes
+import hashlib
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
 
+        # Hash the input password
+        password_hash = hashlib.sha256(password.encode()).hexdigest().upper()
+        print(f"Input password hash: {password_hash}")
+
         conn = connect_to_db()
         if conn:
             try:
                 cursor = conn.cursor()
-
-                # ✅ Corrected PostgreSQL Query
-                cursor.execute("SELECT Password, AccessLevel FROM Users WHERE Username = %s", (username,))
+                cursor.execute("SELECT Password, AccessLevel FROM Users WHERE Username = ?", username)
                 user = cursor.fetchone()
-                cursor.close()
-                conn.close()
-
-                # Debugging
                 print(f"Fetched user: {user}")
 
-                if user:
-                    stored_password_hash = user[0]
-                    if check_password_hash(stored_password_hash, password):
-                        session['username'] = username
-                        session['access_level'] = user[1]
-                        flash("Login successful!", "success")
-                        return redirect(url_for('home'))
-                    else:
-                        flash("Invalid username or password", "danger")
+                if user and user[0] == password_hash:  # Compare hash directly
+                    session['username'] = username
+                    session['access_level'] = user[1]
+                    flash("Login successful!", "success")
+                    return redirect(url_for('home'))
                 else:
-                    flash("User not found", "danger")
+                    flash("Invalid username or password", "danger")
             except Exception as e:
                 flash(f"Error during login: {e}", "danger")
-
+            finally:
+                conn.close()
     return render_template('login.html')
+
 
 @app.route('/logout')
 def logout():
@@ -74,44 +77,53 @@ def logout():
 
 @app.route('/')
 def home():
+    # Check if user is logged in
     if 'username' not in session:
         flash("Please log in to access the system.", "warning")
         return redirect(url_for('login'))
 
+    # Fetch all documents from the database
     conn = connect_to_db()
-    documents, tickets = [], []
-    
+    documents = []
+    tickets = []
     if conn:
         try:
             cursor = conn.cursor()
-
-            # ✅ Corrected Queries for PostgreSQL
+            # Fetch documents
             cursor.execute("SELECT DocumentID, Title, FilePath, UploadDate, Summary FROM KnowledgeBase")
             documents = cursor.fetchall()
 
+            # Fetch open tickets with username and job site
             cursor.execute("""
-                SELECT t.TicketID, t.CreatedAt, t.IssueTitle, t.JobSite, u.Username
+                SELECT 
+                    t.TicketID, 
+                    t.CreatedAt, 
+                    t.IssueTitle, 
+                    t.JobSite, 
+                    u.Username
                 FROM Tickets t
                 LEFT JOIN Users u ON t.AssignedTo = u.UserID
                 WHERE t.Status = 'Open'
             """)
             tickets = cursor.fetchall()
-
-            cursor.close()
         except Exception as e:
             flash(f"Error fetching data: {e}", "danger")
         finally:
             conn.close()
-
     return render_template('home.html', documents=documents, tickets=tickets)
+
+
+
 
 @app.route('/create_user', methods=['GET', 'POST'])
 def create_user():
+    # Restrict access to admins only
     if 'access_level' not in session or session['access_level'] != "Admin":
         flash("You do not have permission to access this page.", "danger")
         return redirect(url_for('home'))
 
     if request.method == 'POST':
+        # Get user details from the form
         username = request.form.get('username')
         password = request.form.get('password')
         access_level = request.form.get('access_level')
@@ -120,33 +132,33 @@ def create_user():
             flash("All fields are required!", "danger")
             return redirect(url_for('create_user'))
 
-        # ✅ Hash password correctly
-        password_hash = generate_password_hash(password)
+        # Hash the password
+        password_hash = hashlib.sha256(password.encode()).hexdigest().upper()
 
+        # Insert the new user into the database
         conn = connect_to_db()
         if conn:
             try:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO Users (Username, Password, AccessLevel)
-                    VALUES (%s, %s, %s)
-                """, (username, password_hash, access_level))
+                    VALUES (?, ?, ?)
+                """, username, password_hash, access_level)
                 conn.commit()
-                cursor.close()
                 flash("User created successfully!", "success")
             except Exception as e:
                 flash(f"Error creating user: {e}", "danger")
             finally:
                 conn.close()
         return redirect(url_for('create_user'))
-
+    
     return render_template('create_user.html')
 
 @app.route('/new_ticket', methods=['GET', 'POST'])
 def new_ticket():
     search_results = []
     if request.method == 'POST':
-        if 'search_query' in request.form:
+        if 'search_query' in request.form:  # If the form is a search request
             search_query = request.form.get('search_query')
             conn = connect_to_db()
             if conn:
@@ -155,15 +167,14 @@ def new_ticket():
                     cursor.execute("""
                         SELECT TicketID, IssueTitle, CreatedAt, Status, CloseAt
                         FROM Tickets
-                        WHERE IssueTitle LIKE %s
-                    """, (f"%{search_query}%",))
+                        WHERE IssueTitle LIKE ?
+                    """, f"%{search_query}%")
                     search_results = cursor.fetchall()
-                    cursor.close()
                 except Exception as e:
                     flash(f"Error searching tickets: {e}", "danger")
                 finally:
                     conn.close()
-        else:
+        else:  # If the form is for creating a ticket
             name = request.form.get('name')
             phone = request.form.get('phone')
             email = request.form.get('email')
@@ -175,6 +186,7 @@ def new_ticket():
             assigned_to = request.form.get('assigned_to')
             file = request.files['file']
 
+            # Save file
             file_path = None
             if file:
                 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -188,18 +200,32 @@ def new_ticket():
                     cursor = conn.cursor()
                     cursor.execute("""
                         INSERT INTO Tickets (Name, Phone, Email, JobSite, IssueTitle, Issue, StepsTaken, DocumentID, AssignedTo, FilePath)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """, (name, phone, email, job_site, issue_title, description, steps_taken, document_id, assigned_to, file_path))
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, name, phone, email, job_site, issue_title, description, steps_taken, document_id, assigned_to, file_path)
                     conn.commit()
-                    cursor.close()
                     flash("Ticket created successfully!", "success")
                 except Exception as e:
                     flash(f"Error creating ticket: {e}", "danger")
                 finally:
                     conn.close()
             return redirect(url_for('home'))
-
-    return render_template('new_ticket.html', search_results=search_results)
+    
+    conn = connect_to_db()
+    documents = []
+    users = []
+    if conn:
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT DocumentID, Title FROM KnowledgeBase")
+            documents = cursor.fetchall()
+            cursor.execute("SELECT UserID, Username FROM Users")
+            users = cursor.fetchall()
+        except Exception as e:
+            flash(f"Error fetching data: {e}", "danger")
+        finally:
+            conn.close()
+    
+    return render_template('new_ticket.html', documents=documents, users=users, search_results=search_results)
 
 
 
@@ -212,13 +238,11 @@ def view_tickets():
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM Tickets")
             tickets = cursor.fetchall()
-            cursor.close()
         except Exception as e:
             flash(f"Error fetching tickets: {e}", "danger")
         finally:
             conn.close()
     return render_template('view_tickets.html', tickets=tickets)
-
 
 @app.route('/search_tickets', methods=['GET', 'POST'])
 def search_tickets():
@@ -232,6 +256,7 @@ def search_tickets():
             flash("Please enter a search query!", "danger")
             return redirect(url_for('search_tickets'))
 
+        # Query database for tickets matching the search
         conn = connect_to_db()
         if conn:
             try:
@@ -239,17 +264,15 @@ def search_tickets():
                 cursor.execute("""
                     SELECT TicketID, IssueTitle, CreatedAt, Status
                     FROM Tickets
-                    WHERE IssueTitle ILIKE %s OR JobSite ILIKE %s
-                """, (f"%{search_query}%", f"%{search_query}%"))
+                    WHERE IssueTitle LIKE ? OR JobSite LIKE ?
+                """, f"%{search_query}%", f"%{search_query}%")
                 results = cursor.fetchall()
-                cursor.close()
             except Exception as e:
                 flash(f"Error searching tickets: {e}", "danger")
             finally:
                 conn.close()
 
     return render_template('search_tickets.html', results=results, search_query=search_query)
-
 
 @app.route('/edit_ticket/<int:ticket_id>', methods=['GET', 'POST'])
 def edit_ticket(ticket_id):
@@ -260,39 +283,38 @@ def edit_ticket(ticket_id):
         try:
             cursor = conn.cursor()
             if request.method == 'POST':
+                # Update the ticket
                 issue_title = request.form.get('issue_title')
                 description = request.form.get('description')
                 steps_taken = request.form.get('steps_taken')
                 job_site = request.form.get('job_site')
                 assigned_to = request.form.get('assigned_to')
                 status = request.form.get('status')
-
                 cursor.execute("""
                     UPDATE Tickets
-                    SET IssueTitle = %s, Issue = %s, StepsTaken = %s, JobSite = %s, AssignedTo = %s, Status = %s
-                    WHERE TicketID = %s
-                """, (issue_title, description, steps_taken, job_site, assigned_to, status, ticket_id))
+                    SET IssueTitle = ?, Issue = ?, StepsTaken = ?, JobSite = ?, AssignedTo = ?, Status = ?
+                    WHERE TicketID = ?
+                """, issue_title, description, steps_taken, job_site, assigned_to, status, ticket_id)
                 conn.commit()
-                cursor.close()
                 flash("Ticket updated successfully!", "success")
                 return redirect(url_for('home'))
 
+            # Fetch ticket details for editing
             cursor.execute("""
                 SELECT TicketID, IssueTitle, Issue, StepsTaken, JobSite, AssignedTo, Status, CloseAt
                 FROM Tickets
-                WHERE TicketID = %s
-            """, (ticket_id,))
+                WHERE TicketID = ?
+            """, ticket_id)
             ticket = cursor.fetchone()
 
+            # Fetch users for the dropdown
             cursor.execute("SELECT UserID, Username FROM Users")
             users = cursor.fetchall()
-            cursor.close()
         except Exception as e:
             flash(f"Error fetching or updating ticket: {e}", "danger")
         finally:
             conn.close()
     return render_template('edit_ticket.html', ticket=ticket, users=users)
-
 
 @app.route('/close_ticket/<int:ticket_id>', methods=['POST'])
 def close_ticket(ticket_id):
@@ -300,13 +322,13 @@ def close_ticket(ticket_id):
     if conn:
         try:
             cursor = conn.cursor()
+            # Update the CloseAt column to the current timestamp
             cursor.execute("""
                 UPDATE Tickets
-                SET Status = 'Closed', CloseAt = %s
-                WHERE TicketID = %s
-            """, (datetime.datetime.now(), ticket_id))
+                SET Status = 'Closed', CloseAt = ?
+                WHERE TicketID = ?
+            """, datetime.datetime.now(), ticket_id)
             conn.commit()
-            cursor.close()
             flash("Ticket closed successfully!", "success")
         except Exception as e:
             flash(f"Error closing ticket: {e}", "danger")
@@ -320,7 +342,13 @@ def close_ticket(ticket_id):
 
 @app.route('/upload', methods=['GET', 'POST'])
 def upload():
+    # # Restrict access to admins only
+    # if 'access_level' not in session or session['access_level'] not in ["Admin"]:
+    #     flash("You do not have permission to access this page.", "danger")
+    #     return redirect(url_for('home'))
+
     if request.method == 'POST':
+        # Collect form data
         title = request.form.get('title')
         keywords = request.form.get('keywords')
         summary = request.form.get('summary')
@@ -330,28 +358,30 @@ def upload():
             flash("Title and File are required!", "danger")
             return redirect(url_for('upload'))
 
+        # Save file to upload folder
         os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
+
+        # Convert to relative path for database storage
         file_path = os.path.relpath(file_path, start=os.getcwd())
 
+        # Insert metadata into the database
         conn = connect_to_db()
         if conn:
             try:
                 cursor = conn.cursor()
                 cursor.execute("""
                     INSERT INTO KnowledgeBase (Title, FilePath, Keywords, UploadDate, Summary)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (title, file_path, keywords, datetime.datetime.now(), summary))
+                    VALUES (?, ?, ?, ?, ?)
+                """, title, file_path, keywords, datetime.datetime.now(), summary)
                 conn.commit()
-                cursor.close()
                 flash("Document uploaded successfully!", "success")
             except Exception as e:
                 flash(f"Error uploading document: {e}", "danger")
             finally:
                 conn.close()
         return redirect(url_for('upload'))
-
     return render_template('upload.html')
 
 
@@ -365,6 +395,7 @@ def search():
             flash("Please enter a search query!", "danger")
             return redirect(url_for('search'))
 
+        # Query database
         conn = connect_to_db()
         if conn:
             try:
@@ -372,15 +403,48 @@ def search():
                 cursor.execute("""
                     SELECT DocumentID, Title, FilePath, UploadDate, Summary
                     FROM KnowledgeBase
-                    WHERE Title ILIKE %s OR Keywords ILIKE %s
-                """, (f"%{search_query}%", f"%{search_query}%"))
+                    WHERE Title LIKE ? OR Keywords LIKE ?
+                """, f"%{search_query}%", f"%{search_query}%")
                 results = cursor.fetchall()
-                cursor.close()
             except Exception as e:
                 flash(f"Error searching documents: {e}", "danger")
             finally:
                 conn.close()
     return render_template('search.html', results=results)
+
+@app.route('/view', methods=['GET'])
+def view_document():
+    file_path = request.args.get('file_path')
+    if not file_path:
+        flash("No file specified", "danger")
+        return redirect(url_for('search'))
+
+    try:
+        # Normalize and resolve file path
+        file_path = os.path.normpath(file_path)  # Normalize slashes
+        absolute_path = os.path.join(os.getcwd(), file_path)  # Convert to absolute path
+
+        # Ensure the file exists
+        if not os.path.isfile(absolute_path):
+            flash("File not found", "danger")
+            return redirect(url_for('search'))
+
+        # Determine the file extension
+        _, file_extension = os.path.splitext(absolute_path)
+        if file_extension in ['.txt', '.html']:
+            # Read and display text or HTML content
+            with open(absolute_path, 'r') as file:
+                content = file.read()
+            return render_template('view.html', content=content, file_name=os.path.basename(absolute_path))
+        elif file_extension == '.pdf':
+            # Serve PDF files inline
+            return send_file(absolute_path, as_attachment=False)
+        else:
+            flash("Unsupported file format for viewing", "warning")
+            return redirect(url_for('search'))
+    except Exception as e:
+        flash(f"Error viewing file: {e}", "danger")
+        return redirect(url_for('search'))
 
 @app.route('/edit_document/<int:document_id>', methods=['GET', 'POST'])
 def edit_document(document_id):
@@ -390,28 +454,20 @@ def edit_document(document_id):
         return redirect(url_for('home'))
 
     conn = connect_to_db()
-    document = None
-
     if conn:
         try:
             cursor = conn.cursor()
-            # ✅ Fetch document details (Fixed query format)
-            cursor.execute("SELECT Title, FilePath, Keywords, Summary FROM KnowledgeBase WHERE DocumentID = %s", (document_id,))
+            # Fetch document details
+            cursor.execute("SELECT Title, FilePath, Keywords, Summary FROM KnowledgeBase WHERE DocumentID = ?", document_id)
             document = cursor.fetchone()
-            cursor.close()
         except Exception as e:
             flash(f"Error fetching document: {e}", "danger")
             return redirect(url_for('home'))
         finally:
             conn.close()
 
-    # ✅ Prevent crash if document is not found
-    if not document:
-        flash("Document not found!", "danger")
-        return redirect(url_for('home'))
-
     if request.method == 'POST':
-        # ✅ Get updated form data
+        # Update the document
         title = request.form.get('title')
         keywords = request.form.get('keywords')
         summary = request.form.get('summary')
@@ -421,32 +477,30 @@ def edit_document(document_id):
             flash("Title is required!", "danger")
             return redirect(url_for('edit_document', document_id=document_id))
 
-        # ✅ Save the new file if uploaded
-        file_path = document[1]  # Preserve existing file path
+        # Save the new file if uploaded
+        file_path = document[1]
         if file:
             os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
             file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
             file.save(file_path)
             file_path = os.path.relpath(file_path, start=os.getcwd())
 
-        # ✅ Update the document in PostgreSQL
+        # Update the database
         conn = connect_to_db()
         if conn:
             try:
                 cursor = conn.cursor()
                 cursor.execute("""
                     UPDATE KnowledgeBase
-                    SET Title = %s, FilePath = %s, Keywords = %s, Summary = %s, UploadDate = %s
-                    WHERE DocumentID = %s
-                """, (title, file_path, keywords, summary, datetime.datetime.now(), document_id))
+                    SET Title = ?, FilePath = ?, Keywords = ?, Summary = ?, UploadDate = ?
+                    WHERE DocumentID = ?
+                """, title, file_path, keywords, summary, datetime.datetime.now(), document_id)
                 conn.commit()
-                cursor.close()
                 flash("Document updated successfully!", "success")
             except Exception as e:
                 flash(f"Error updating document: {e}", "danger")
             finally:
                 conn.close()
-
         return redirect(url_for('home'))
 
     return render_template('edit_document.html', document=document)
