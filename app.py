@@ -415,6 +415,40 @@ def search():
                 conn.close()
     return render_template('search.html', results=results)
 
+@app.route('/view', methods=['GET'])
+def view_document():
+    file_path = request.args.get('file_path')
+    if not file_path:
+        flash("No file specified", "danger")
+        return redirect(url_for('search'))
+
+    try:
+        # Normalize and resolve file path
+        file_path = os.path.normpath(file_path)  # Normalize slashes
+        absolute_path = os.path.join(os.getcwd(), file_path)  # Convert to absolute path
+
+        # Ensure the file exists
+        if not os.path.isfile(absolute_path):
+            flash("File not found", "danger")
+            return redirect(url_for('search'))
+
+        # Determine the file extension
+        _, file_extension = os.path.splitext(absolute_path)
+        if file_extension in ['.txt', '.html']:
+            # Read and display text or HTML content
+            with open(absolute_path, 'r') as file:
+                content = file.read()
+            return render_template('view.html', content=content, file_name=os.path.basename(absolute_path))
+        elif file_extension == '.pdf':
+            # Serve PDF files inline
+            return send_file(absolute_path, as_attachment=False)
+        else:
+            flash("Unsupported file format for viewing", "warning")
+            return redirect(url_for('search'))
+    except Exception as e:
+        flash(f"Error viewing file: {e}", "danger")
+        return redirect(url_for('search'))
+
 @app.route('/edit_document/<int:document_id>', methods=['GET', 'POST'])
 def edit_document(document_id):
     # Restrict access to admins only
