@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(".env.dev")
 
 # Fetch PostgreSQL database credentials
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -19,16 +19,30 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "supersecretkey")  # Load secret 
 UPLOAD_FOLDER = './static/documents'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-# ✅ Corrected: PostgreSQL Database Connection Function
+# ✅ PostgreSQL Database Connection Function
 def connect_to_db():
     try:
         conn = psycopg2.connect(DATABASE_URL, sslmode="require")
+        print("✅ Successfully connected to PostgreSQL database.")
         return conn
     except Exception as e:
-        print(f"Error connecting to database: {e}")
+        print(f"❌ Error connecting to database: {e}")
         return None
 
+# ✅ Test connection at startup (proper indentation)
+conn = connect_to_db()
+if conn:
+    conn.close()
+
+    
+    # Test connection at startup
+conn = connect_to_db()
+if conn:
+    conn.close()
+
 # ------------------------------------ ROUTES ------------------------------------
+
+from werkzeug.security import check_password_hash
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -40,31 +54,50 @@ def login():
         if conn:
             try:
                 cursor = conn.cursor()
-
-                # ✅ Corrected PostgreSQL Query
-                cursor.execute("SELECT Password, AccessLevel FROM Users WHERE Username = %s", (username,))
+                cursor.execute("SELECT password, accesslevel FROM users WHERE username = %s", (username,))
                 user = cursor.fetchone()
                 cursor.close()
                 conn.close()
 
-                # Debugging
-                print(f"Fetched user: {user}")
+                # Debugging output
+                print(f"🔍 Fetched user from DB: {user}")
 
                 if user:
                     stored_password_hash = user[0]
+
+                    # Debugging: Compare the stored hash with entered password
+                    print(f"🔍 Stored Hash: {stored_password_hash}")
+                    print(f"🔍 Entered Password: {password}")
+                    print(f"🔍 Hash Check Result: {check_password_hash(stored_password_hash, password)}")
+
                     if check_password_hash(stored_password_hash, password):
                         session['username'] = username
                         session['access_level'] = user[1]
-                        flash("Login successful!", "success")
+                        flash("✅ Login successful!", "success")
                         return redirect(url_for('home'))
                     else:
-                        flash("Invalid username or password", "danger")
+                        flash("❌ Invalid username or password", "danger")
                 else:
-                    flash("User not found", "danger")
+                    flash("❌ User not found", "danger")
             except Exception as e:
-                flash(f"Error during login: {e}", "danger")
+                flash(f"⚠️ Error during login: {e}", "danger")
 
     return render_template('login.html')
+
+
+# Generate a new hash for "user123"
+from werkzeug.security import generate_password_hash
+
+# Force pbkdf2:sha256 instead of scrypt
+hashed_password = generate_password_hash("user123", method="pbkdf2:sha256")
+
+print("🔑 Corrected Hashed Password:", hashed_password)
+
+
+
+
+
+
 
 @app.route('/logout')
 def logout():
